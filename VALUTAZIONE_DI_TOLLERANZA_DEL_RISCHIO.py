@@ -4,18 +4,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 from io import BytesIO 
-import os 
 import openpyxl 
 from openpyxl.drawing.image import Image as OpenpyxlImage 
+# Non importiamo 'os' o logica di File esistente, perché non usiamo lo storico.
 
 # ==============================================================================
-# 1. CLASSI E DATI DI RIFERIMENTO
+# 1. CLASSI E DATI DI RIFERIMENTO (Simplificati)
 # ==============================================================================
 
 class ClientData:
-    """Contenitore per i dati di un singolo cliente e il suo profilo di rischio."""
+    """Contenitore per i dati del cliente per un report singolo."""
     def __init__(self, name, score, profile, allocation, details, description, desired_profile, justification):
-        self.DataOra = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+        self.DataOra = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.NomeCliente = name
         self.PunteggioTotale = score
         self.ProfiloRischio = profile
@@ -24,28 +24,10 @@ class ClientData:
         self.DescrizioneProfilo = description
         self.ProfiloDesiderato = desired_profile
         self.Giustificazione = justification
-
-    def to_dataframe(self):
-        """Converte i dati del cliente in un DataFrame Pandas per lo storico."""
-        data = {
-            'Data_Ora': [self.DataOra],
-            'Nome_Cliente': [self.NomeCliente],
-            'Punteggio_Totale': [self.PunteggioTotale],
-            'Profilo_Rischio_Assegnato': [self.ProfiloRischio],
-            'Profilo_Rischio_Desiderato': [self.ProfiloDesiderato],
-            'Allocazione_Suggerita': [self.AllocazioneSuggerita],
-            'Giustificazione_Disallineamento': [self.Giustificazione],
-            'Score_Capacita_Finanziaria': [self.PunteggiDettaglio.get('Capacità Finanziaria', 0)],
-            'Score_Conoscenza': [self.PunteggiDettaglio.get('Conoscenza', 0)],
-            'Score_Orizzonte': [self.PunteggiDettaglio.get('Orizzonte Temporale', 0)],
-            'Score_Psicologico': [self.PunteggiDettaglio.get('Tolleranza Psicologica', 0)]
-        }
-        return pd.DataFrame(data)
-
+        
 class RiskProfiler:
     """Classe principale che gestisce il questionario e l'output."""
     
-    FILE_EXCEL = 'Storico_Report_Rischio.xlsx' 
     PUNTEGGIO_MAX = 100 
     
     PROFILES = {
@@ -122,15 +104,10 @@ class RiskProfiler:
         
         return fig 
 
-    def generate_excel_report(self, client, df_full):
-        """Salva i dati e il grafico nel file Excel, risolvendo l'IndexError."""
+    # 🛑 FUNZIONE SEMPLIFICATA: Crea SOLO il report corrente per il download
+    def generate_excel_report_single(self, client):
+        """Genera un report Excel in memoria (BytesIO) contenente SOLO il report grafico."""
         
-        timestamp_clean = client.DataOra.replace('-', '').replace(':', '').replace(' ', '').replace('.', '')
-        unique_id = timestamp_clean[-10:] 
-        name_clean_safe = client.NomeCliente.replace(" ", "_").replace(".", "")[:18]
-        sheet_name_report = f"Rpt_{name_clean_safe}_{unique_id}" 
-        sheet_name_report = sheet_name_report[:31] 
-
         # Genera il grafico e l'immagine
         fig = self.create_plot(client)
         img_data = BytesIO()
@@ -140,56 +117,26 @@ class RiskProfiler:
         img.width = 500
         img.height = 500
 
-        # Crea un file Excel in memoria
-        output = BytesIO()
+        # Crea un workbook completamente nuovo
+        workbook = openpyxl.Workbook()
         
-        # Gestione della modalità di scrittura (per risolvere i conflitti)
-        try:
-            workbook = openpyxl.load_workbook(self.FILE_EXCEL)
-            mode = 'a'
-        except FileNotFoundError:
-            # Crea un workbook standard
-            workbook = openpyxl.Workbook()
-            # 🛑 CORREZIONE 1: Rimuovi il foglio di default 'Sheet' immediatamente.
-            # Questo assicura che il primo foglio scritto da Pandas sia il foglio attivo/visibile.
-            default_sheet = workbook.active
-            workbook.remove(default_sheet)
-            mode = 'w'
-        
-        # Setup Argomenti di scrittura
-        writer_args = {'engine': 'openpyxl', 'mode': mode}
-        if mode == 'a':
-            writer_args['if_sheet_exists'] = 'replace'
-            
-        # --- FASE 1: Scrittura dei DataFrame in memoria ---
-        with pd.ExcelWriter(output, **writer_args) as writer:
-            writer.book = workbook
-            
-            # 1. Scrive lo Storico
-            df_full.to_excel(writer, sheet_name='Storico Clienti', index=False)
-            
-            # 2. Aggiunge il foglio report vuoto
-            pd.DataFrame().to_excel(writer, sheet_name=sheet_name_report, index=False)
-            
-        # --- FASE 2: Manipolazione del Workbook (Correzione Index Error) ---
-        
-        output.seek(0)
-        # Carica il workbook appena scritto da Pandas
-        workbook = openpyxl.load_workbook(output)
-        
-        # C. Inserimento dei contenuti nel foglio report
-        worksheet_report = workbook[sheet_name_report]
-        worksheet_report.add_image(img, 'B2')
+        # Imposta il foglio di report
+        sheet_name = f"Report {client.NomeCliente[:15]} ({client.ProfiloRischio[0]})"
+        ws = workbook.active
+        ws.title = sheet_name
 
-        # D. Inserisce Analisi Puntuata (Normalizzazione %)
+        # Inserisci il grafico
+        ws.add_image(img, 'B2')
+
+        # D. Inserisce Analisi Puntuata
         max_scores = [30, 20, 20, 30] 
         categories = list(client.PunteggiDettaglio.keys())
         values = list(client.PunteggiDettaglio.values())
         
-        worksheet_report['G1'] = "ANALISI PUNTUALE PER AREA"
-        worksheet_report['G2'] = "Area"
-        worksheet_report['H2'] = "Punteggio / Max"
-        worksheet_report['I2'] = "Normalizzato %"
+        ws['G1'] = "ANALISI PUNTUALE PER AREA"
+        ws['G2'] = "Area"
+        ws['H2'] = "Punteggio / Max"
+        ws['I2'] = "Normalizzato %"
         
         start_row = 3
         for i, category in enumerate(categories):
@@ -197,23 +144,20 @@ class RiskProfiler:
             score = values[i]
             percentage = (score / max_s) * 100
             
-            worksheet_report[f'G{start_row + i}'] = category
-            worksheet_report[f'H{start_row + i}'] = f"{score} / {max_s}"
-            worksheet_report[f'I{start_row + i}'] = f"{percentage:.1f}%"
+            ws[f'G{start_row + i}'] = category
+            ws[f'H{start_row + i}'] = f"{score} / {max_s}"
+            ws[f'I{start_row + i}'] = f"{percentage:.1f}%"
             
         # E. Dettagli Report Principale
-        worksheet_report['A1'] = f"Report di Profilazione: {client.NomeCliente}"
-        worksheet_report['A3'] = f"Profilo Calcolato: {client.ProfiloRischio}"
-        worksheet_report['A4'] = f"Profilo Desiderato: {client.ProfiloDesiderato}"
-        worksheet_report['A5'] = f"Punteggio Totale: {client.PunteggioTotale}/{self.PUNTEGGIO_MAX}"
-        worksheet_report['A6'] = f"Allocazione Suggerita: {client.AllocazioneSuggerita}"
-        worksheet_report['A8'] = f"Gap Coerenza: {'DISALLINEATO' if client.ProfiloRischio != client.ProfiloDesiderato else 'ALLINEATO'}"
-        worksheet_report['A9'] = f"Giustificazione: {client.Giustificazione}"
+        ws['A1'] = f"Report di Profilazione: {client.NomeCliente}"
+        ws['A3'] = f"Profilo Calcolato: {client.ProfiloRischio}"
+        ws['A4'] = f"Profilo Desiderato: {client.ProfiloDesiderato}"
+        ws['A5'] = f"Punteggio Totale: {client.PunteggioTotale}/{self.PUNTEGGIO_MAX}"
+        ws['A6'] = f"Allocazione Suggerita: {client.AllocazioneSuggerita}"
+        ws['A8'] = f"Gap Coerenza: {'DISALLINEATO' if client.ProfiloRischio != client.ProfiloDesiderato else 'ALLINEATO'}"
+        ws['A9'] = f"Giustificazione: {client.Giustificazione}"
         
-        # 🛑 CORREZIONE 2: Imposta il foglio "Storico Clienti" come attivo/selezionato
-        workbook.active = workbook.sheetnames.index('Storico Clienti')
-        
-        # --- FASE 3: Salvataggio finale del Workbook corretto ---
+        # Salva in BytesIO per il download
         output_final = BytesIO()
         workbook.save(output_final)
         output_final.seek(0)
@@ -229,20 +173,8 @@ profiler = RiskProfiler()
 st.set_page_config(page_title="🛡️ Risk Profiler MiFID", layout="wide")
 st.title("🛡️ Professional Risk Profiler (MiFID Structure)")
 
-@st.cache_data 
-def get_historical_df():
-    """Carica il DataFrame storico."""
-    try:
-        if os.path.exists(profiler.FILE_EXCEL):
-            return pd.read_excel(profiler.FILE_EXCEL, sheet_name='Storico Clienti')
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
+# Non è necessario il caching dello storico o il Session State per df_full
 
-# Inizializzazione dello stato di Streamlit
-if 'historical_df' not in st.session_state:
-    st.session_state.historical_df = get_historical_df()
-    
 if 'profile_results' not in st.session_state:
     st.session_state.profile_results = None
 
@@ -330,15 +262,12 @@ if st.session_state.profile_results and not st.session_state.get('show_justifica
         "Giustificazione": client.Giustificazione
     })
     
-    # Aggiornamento dello Storico e Generazione del Download
-    df_new = client.to_dataframe()
-    df_full = pd.concat([st.session_state.historical_df, df_new], ignore_index=True)
-    
-    excel_data = profiler.generate_excel_report(client, df_full)
+    # 🛑 CHIAMATA SEMPLIFICATA: Crea SOLO il report singolo
+    excel_data = profiler.generate_excel_report_single(client)
     
     st.download_button(
-        label="⬇️ Scarica Report Excel Completo (Storico + Grafico)",
+        label="⬇️ Scarica Report Excel (Singola Valutazione)",
         data=excel_data,
-        file_name=f"Report_Rischio_{client.NomeCliente.replace(' ', '_')}_{client.DataOra[:10]}.xlsx",
+        file_name=f"Report_Rischio_{client.NomeCliente.replace(' ', '_')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
