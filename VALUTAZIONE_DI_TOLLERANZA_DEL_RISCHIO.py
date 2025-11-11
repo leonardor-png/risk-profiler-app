@@ -8,10 +8,12 @@ import os
 import openpyxl 
 from openpyxl.drawing.image import Image as OpenpyxlImage 
 
-# ... (Classi ClientData e RiskProfiler e resto del codice precedente — INVARIATE)
+# ==============================================================================
+# 1. CLASSI E DATI DI RIFERIMENTO
+# ==============================================================================
 
 class ClientData:
-    # ... (INVARIATA)
+    """Contenitore per i dati di un singolo cliente e il suo profilo di rischio."""
     def __init__(self, name, score, profile, allocation, details, description, desired_profile, justification):
         self.DataOra = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
         self.NomeCliente = name
@@ -24,7 +26,7 @@ class ClientData:
         self.Giustificazione = justification
 
     def to_dataframe(self):
-        # ... (INVARIATA)
+        """Converte i dati del cliente in un DataFrame Pandas per lo storico."""
         data = {
             'Data_Ora': [self.DataOra],
             'Nome_Cliente': [self.NomeCliente],
@@ -41,7 +43,8 @@ class ClientData:
         return pd.DataFrame(data)
 
 class RiskProfiler:
-    # ... (INVARIATA)
+    """Classe principale che gestisce il questionario e l'output."""
+    
     FILE_EXCEL = 'Storico_Report_Rischio.xlsx' 
     PUNTEGGIO_MAX = 100 
     
@@ -62,7 +65,7 @@ class RiskProfiler:
     ]
 
     def _determine_profile(self, name, score, details):
-        # ... (INVARIATA)
+        """Assegna il profilo di rischio e applica il guardrail di coerenza."""
         profile_name = "Non Classificabile"
         allocation = "Da definire."
         description = ""
@@ -76,15 +79,16 @@ class RiskProfiler:
         
         profilo_iniziale = profile_name
         
+        # GUARDRAIL: Controllo Capacità Finanziaria
         score_capacita = details.get('Capacità Finanziaria', 0)
         
         if score_capacita <= 15 and ("Aggressivo" in profile_name or "Dinamico" in profile_name):
             if score_capacita <= 10:
-                 profile_name = self.PROFILES[(21, 40)][0] 
+                 profile_name = self.PROFILES[(21, 40)][0] # Moderato
                  description += " [⚠ Declassato per Bassa Capacità Finanziaria (<=10/30)]."
                  allocation = self.PROFILES[(21, 40)][2]
             elif score_capacita <= 15 and "Aggressivo" in profile_name:
-                 profile_name = self.PROFILES[(41, 60)][0] 
+                 profile_name = self.PROFILES[(41, 60)][0] # Bilanciato
                  description += " [⚠ Ridimensionato per Capacità Finanziaria Media/Bassa (<=15/30)]."
                  allocation = self.PROFILES[(41, 60)][2]
             
@@ -93,7 +97,7 @@ class RiskProfiler:
         return client_data, profilo_iniziale
 
     def create_plot(self, client):
-        # ... (INVARIATA)
+        """Crea la figura Matplotlib per il solo Radar Chart."""
         categories = list(client.PunteggiDettaglio.keys())
         values = list(client.PunteggiDettaglio.values())
         max_scores = [30, 20, 20, 30] 
@@ -136,15 +140,15 @@ class RiskProfiler:
         img.width = 500
         img.height = 500
 
-        # --- FASE 1: Scrittura dei DataFrame in memoria ---
+        # Crea un file Excel in memoria
+        output = BytesIO()
         
-        # Determina la modalità e carica il workbook esistente (se presente)
-        output_temp = BytesIO()
+        # Gestione della modalità di scrittura (per risolvere i conflitti)
         try:
             workbook = openpyxl.load_workbook(self.FILE_EXCEL)
             mode = 'a'
         except FileNotFoundError:
-            # Crea un workbook fittizio (Pandas lo riscriverà)
+            # Crea un workbook standard (che avrà un foglio "Sheet" predefinito)
             workbook = openpyxl.Workbook()
             mode = 'w'
         
@@ -153,8 +157,8 @@ class RiskProfiler:
         if mode == 'a':
             writer_args['if_sheet_exists'] = 'replace'
             
-        # Scrive tutti i dati in un buffer temporaneo (output_temp)
-        with pd.ExcelWriter(output_temp, **writer_args) as writer:
+        # --- FASE 1: Scrittura dei DataFrame in memoria ---
+        with pd.ExcelWriter(output, **writer_args) as writer:
             writer.book = workbook
             
             # 1. Scrive lo Storico
@@ -165,13 +169,20 @@ class RiskProfiler:
             
         # --- FASE 2: Manipolazione del Workbook (Correzione Index Error) ---
         
-        output_temp.seek(0)
-        # 🛑 Carica il workbook appena scritto da Pandas
-        workbook = openpyxl.load_workbook(output_temp)
+        output.seek(0)
+        # Carica il workbook appena scritto da Pandas
+        workbook = openpyxl.load_workbook(output)
         
-        # C. Inserimento dei contenuti nel nuovo foglio
+        # 🛑 CORREZIONE DEFINITIVA DELL'INDEXERROR
+        # Rimuove il foglio di default di openpyxl ('Sheet') se esiste. 
+        # Questo garantisce che 'Storico Clienti' sia l'unico foglio "attivo"
+        # e visibile senza ambiguità.
+        if 'Sheet' in workbook.sheetnames:
+             std_sheet = workbook['Sheet']
+             workbook.remove(std_sheet)
+
+        # C. Inserimento dei contenuti nel foglio report
         worksheet_report = workbook[sheet_name_report]
-        
         worksheet_report.add_image(img, 'B2')
 
         # D. Inserisce Analisi Puntuata (Normalizzazione %)
@@ -203,8 +214,7 @@ class RiskProfiler:
         worksheet_report['A8'] = f"Gap Coerenza: {'DISALLINEATO' if client.ProfiloRischio != client.ProfiloDesiderato else 'ALLINEATO'}"
         worksheet_report['A9'] = f"Giustificazione: {client.Giustificazione}"
         
-        # 🛑 CORREZIONE FINALE: Forza il foglio "Storico Clienti" come attivo/visibile
-        # Questo risolve definitivamente l'IndexError.
+        # Imposta il foglio "Storico Clienti" come attivo/selezionato
         workbook.active = workbook.sheetnames.index('Storico Clienti')
         
         # --- FASE 3: Salvataggio finale del Workbook corretto ---
@@ -227,6 +237,8 @@ st.title("🛡️ Professional Risk Profiler (MiFID Structure)")
 def get_historical_df():
     """Carica il DataFrame storico."""
     try:
+        # Nota: In ambiente cloud, il file Storico_Report_Rischio.xlsx non esisterà
+        # dopo il primo deploy, quindi ritorna DataFrame vuoto (il comportamento corretto).
         if os.path.exists(profiler.FILE_EXCEL):
             return pd.read_excel(profiler.FILE_EXCEL, sheet_name='Storico Clienti')
         return pd.DataFrame()
