@@ -8,12 +8,10 @@ import os
 import openpyxl 
 from openpyxl.drawing.image import Image as OpenpyxlImage 
 
-# ==============================================================================
-# 1. CLASSI E DATI DI RIFERIMENTO
-# ==============================================================================
+# ... (Classi ClientData e RiskProfiler e resto del codice precedente — INVARIATE)
 
 class ClientData:
-    """Contenitore per i dati di un singolo cliente e il suo profilo di rischio."""
+    # ... (INVARIATA)
     def __init__(self, name, score, profile, allocation, details, description, desired_profile, justification):
         self.DataOra = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
         self.NomeCliente = name
@@ -26,7 +24,7 @@ class ClientData:
         self.Giustificazione = justification
 
     def to_dataframe(self):
-        """Converte i dati del cliente in un DataFrame Pandas per lo storico."""
+        # ... (INVARIATA)
         data = {
             'Data_Ora': [self.DataOra],
             'Nome_Cliente': [self.NomeCliente],
@@ -43,8 +41,7 @@ class ClientData:
         return pd.DataFrame(data)
 
 class RiskProfiler:
-    """Classe principale che gestisce il questionario e l'output."""
-    
+    # ... (INVARIATA)
     FILE_EXCEL = 'Storico_Report_Rischio.xlsx' 
     PUNTEGGIO_MAX = 100 
     
@@ -65,7 +62,7 @@ class RiskProfiler:
     ]
 
     def _determine_profile(self, name, score, details):
-        """Assegna il profilo di rischio e applica il guardrail di coerenza."""
+        # ... (INVARIATA)
         profile_name = "Non Classificabile"
         allocation = "Da definire."
         description = ""
@@ -79,16 +76,15 @@ class RiskProfiler:
         
         profilo_iniziale = profile_name
         
-        # GUARDRAIL: Controllo Capacità Finanziaria
         score_capacita = details.get('Capacità Finanziaria', 0)
         
         if score_capacita <= 15 and ("Aggressivo" in profile_name or "Dinamico" in profile_name):
             if score_capacita <= 10:
-                 profile_name = self.PROFILES[(21, 40)][0] # Moderato
+                 profile_name = self.PROFILES[(21, 40)][0] 
                  description += " [⚠ Declassato per Bassa Capacità Finanziaria (<=10/30)]."
                  allocation = self.PROFILES[(21, 40)][2]
             elif score_capacita <= 15 and "Aggressivo" in profile_name:
-                 profile_name = self.PROFILES[(41, 60)][0] # Bilanciato
+                 profile_name = self.PROFILES[(41, 60)][0] 
                  description += " [⚠ Ridimensionato per Capacità Finanziaria Media/Bassa (<=15/30)]."
                  allocation = self.PROFILES[(41, 60)][2]
             
@@ -97,7 +93,7 @@ class RiskProfiler:
         return client_data, profilo_iniziale
 
     def create_plot(self, client):
-        """Crea la figura Matplotlib per il solo Radar Chart."""
+        # ... (INVARIATA)
         categories = list(client.PunteggiDettaglio.keys())
         values = list(client.PunteggiDettaglio.values())
         max_scores = [30, 20, 20, 30] 
@@ -123,7 +119,7 @@ class RiskProfiler:
         return fig 
 
     def generate_excel_report(self, client, df_full):
-        """Salva i dati e il grafico nel file Excel, creando un nuovo foglio per il report."""
+        """Salva i dati e il grafico nel file Excel, risolvendo l'IndexError."""
         
         timestamp_clean = client.DataOra.replace('-', '').replace(':', '').replace(' ', '').replace('.', '')
         unique_id = timestamp_clean[-10:] 
@@ -140,79 +136,83 @@ class RiskProfiler:
         img.width = 500
         img.height = 500
 
-        # Crea un file Excel in memoria
-        output = BytesIO()
+        # --- FASE 1: Scrittura dei DataFrame in memoria ---
         
-        # Gestione della modalità di scrittura (per risolvere ValueError e IndexError)
+        # Determina la modalità e carica il workbook esistente (se presente)
+        output_temp = BytesIO()
         try:
             workbook = openpyxl.load_workbook(self.FILE_EXCEL)
             mode = 'a'
         except FileNotFoundError:
-            # Crea un workbook vuoto. Lasciamo che Pandas gestisca i fogli.
+            # Crea un workbook fittizio (Pandas lo riscriverà)
             workbook = openpyxl.Workbook()
             mode = 'w'
         
-        # Crea un dizionario di argomenti condizionali
-        writer_args = {
-            'engine': 'openpyxl',
-            'mode': mode
-        }
-        
-        # Aggiungi 'if_sheet_exists' SOLO se siamo in modalità append ('a')
+        # Setup Argomenti di scrittura
+        writer_args = {'engine': 'openpyxl', 'mode': mode}
         if mode == 'a':
             writer_args['if_sheet_exists'] = 'replace'
             
-        # Scrittura dello Storico e del Report (Usa **writer_args)
-        with pd.ExcelWriter(output, **writer_args) as writer:
+        # Scrive tutti i dati in un buffer temporaneo (output_temp)
+        with pd.ExcelWriter(output_temp, **writer_args) as writer:
             writer.book = workbook
             
-            # 🛑 CRITICO: Scrive lo Storico. Questo diventa il foglio 0.
+            # 1. Scrive lo Storico
             df_full.to_excel(writer, sheet_name='Storico Clienti', index=False)
             
-            # B. Aggiunge il nuovo foglio report
+            # 2. Aggiunge il foglio report vuoto
             pd.DataFrame().to_excel(writer, sheet_name=sheet_name_report, index=False)
             
-            # C. Inserimento dei contenuti nel nuovo foglio
-            worksheet_report = writer.book[sheet_name_report]
-            
-            worksheet_report.add_image(img, 'B2')
+        # --- FASE 2: Manipolazione del Workbook (Correzione Index Error) ---
+        
+        output_temp.seek(0)
+        # 🛑 Carica il workbook appena scritto da Pandas
+        workbook = openpyxl.load_workbook(output_temp)
+        
+        # C. Inserimento dei contenuti nel nuovo foglio
+        worksheet_report = workbook[sheet_name_report]
+        
+        worksheet_report.add_image(img, 'B2')
 
-            # D. Inserisce Analisi Puntuata (Normalizzazione %)
-            max_scores = [30, 20, 20, 30] 
-            categories = list(client.PunteggiDettaglio.keys())
-            values = list(client.PunteggiDettaglio.values())
+        # D. Inserisce Analisi Puntuata (Normalizzazione %)
+        max_scores = [30, 20, 20, 30] 
+        categories = list(client.PunteggiDettaglio.keys())
+        values = list(client.PunteggiDettaglio.values())
+        
+        worksheet_report['G1'] = "ANALISI PUNTUALE PER AREA"
+        worksheet_report['G2'] = "Area"
+        worksheet_report['H2'] = "Punteggio / Max"
+        worksheet_report['I2'] = "Normalizzato %"
+        
+        start_row = 3
+        for i, category in enumerate(categories):
+            max_s = max_scores[i]
+            score = values[i]
+            percentage = (score / max_s) * 100
             
-            worksheet_report['G1'] = "ANALISI PUNTUALE PER AREA"
-            worksheet_report['G2'] = "Area"
-            worksheet_report['H2'] = "Punteggio / Max"
-            worksheet_report['I2'] = "Normalizzato %"
+            worksheet_report[f'G{start_row + i}'] = category
+            worksheet_report[f'H{start_row + i}'] = f"{score} / {max_s}"
+            worksheet_report[f'I{start_row + i}'] = f"{percentage:.1f}%"
             
-            start_row = 3
-            for i, category in enumerate(categories):
-                max_s = max_scores[i]
-                score = values[i]
-                percentage = (score / max_s) * 100
-                
-                worksheet_report[f'G{start_row + i}'] = category
-                worksheet_report[f'H{start_row + i}'] = f"{score} / {max_s}"
-                worksheet_report[f'I{start_row + i}'] = f"{percentage:.1f}%"
-                
-            # E. Dettagli Report Principale
-            worksheet_report['A1'] = f"Report di Profilazione: {client.NomeCliente}"
-            worksheet_report['A3'] = f"Profilo Calcolato: {client.ProfiloRischio}"
-            worksheet_report['A4'] = f"Profilo Desiderato: {client.ProfiloDesiderato}"
-            worksheet_report['A5'] = f"Punteggio Totale: {client.PunteggioTotale}/{self.PUNTEGGIO_MAX}"
-            worksheet_report['A6'] = f"Allocazione Suggerita: {client.AllocazioneSuggerita}"
-            worksheet_report['A8'] = f"Gap Coerenza: {'DISALLINEATO' if client.ProfiloRischio != client.ProfiloDesiderato else 'ALLINEATO'}"
-            worksheet_report['A9'] = f"Giustificazione: {client.Giustificazione}"
-            
-            # 🛑 CORREZIONE FINALE: Forza il foglio "Storico Clienti" come attivo
-            # Questo risolve definitivamente l'IndexError di openpyxl.
-            writer.book.active = writer.book['Storico Clienti']
-
-                
-        output.seek(0)
-        return output
+        # E. Dettagli Report Principale
+        worksheet_report['A1'] = f"Report di Profilazione: {client.NomeCliente}"
+        worksheet_report['A3'] = f"Profilo Calcolato: {client.ProfiloRischio}"
+        worksheet_report['A4'] = f"Profilo Desiderato: {client.ProfiloDesiderato}"
+        worksheet_report['A5'] = f"Punteggio Totale: {client.PunteggioTotale}/{self.PUNTEGGIO_MAX}"
+        worksheet_report['A6'] = f"Allocazione Suggerita: {client.AllocazioneSuggerita}"
+        worksheet_report['A8'] = f"Gap Coerenza: {'DISALLINEATO' if client.ProfiloRischio != client.ProfiloDesiderato else 'ALLINEATO'}"
+        worksheet_report['A9'] = f"Giustificazione: {client.Giustificazione}"
+        
+        # 🛑 CORREZIONE FINALE: Forza il foglio "Storico Clienti" come attivo/visibile
+        # Questo risolve definitivamente l'IndexError.
+        workbook.active = workbook.sheetnames.index('Storico Clienti')
+        
+        # --- FASE 3: Salvataggio finale del Workbook corretto ---
+        output_final = BytesIO()
+        workbook.save(output_final)
+        output_final.seek(0)
+        
+        return output_final
     
 profiler = RiskProfiler()
 
@@ -336,4 +336,3 @@ if st.session_state.profile_results and not st.session_state.get('show_justifica
         file_name=f"Report_Rischio_{client.NomeCliente.replace(' ', '_')}_{client.DataOra[:10]}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
