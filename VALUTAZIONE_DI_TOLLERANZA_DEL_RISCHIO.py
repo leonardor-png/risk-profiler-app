@@ -143,14 +143,14 @@ class RiskProfiler:
         # Crea un file Excel in memoria
         output = BytesIO()
         
-        # Gestione della modalità di scrittura (per risolvere ValueError)
+        # Gestione della modalità di scrittura (per risolvere ValueError e IndexError)
         try:
             workbook = openpyxl.load_workbook(self.FILE_EXCEL)
             mode = 'a'
         except FileNotFoundError:
+            # 🛑 CORREZIONE FINALE: Non rimuovere il foglio predefinito
             workbook = openpyxl.Workbook()
-            default_sheet = workbook.active
-            workbook.remove(default_sheet)
+            # La riga workbook.remove(workbook.active) che causava l'IndexError è stata rimossa.
             mode = 'w'
         
         # CHIAVE DI SOLUZIONE: Crea un dizionario di argomenti condizionali
@@ -167,7 +167,7 @@ class RiskProfiler:
         with pd.ExcelWriter(output, **writer_args) as writer:
             writer.book = workbook
             
-            # A. Scrittura dello Storico aggiornato
+            # A. Scrittura dello Storico aggiornato (sovrascrive o crea)
             df_full.to_excel(writer, sheet_name='Storico Clienti', index=False)
             
             # B. Aggiunge il nuovo foglio report
