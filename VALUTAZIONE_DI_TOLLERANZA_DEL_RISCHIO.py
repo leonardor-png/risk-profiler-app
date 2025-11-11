@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Nov  7 18:45:16 2025
-
-@author: leona
-"""
-#pip install streamlit
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -150,7 +143,7 @@ class RiskProfiler:
         # Crea un file Excel in memoria
         output = BytesIO()
         
-        # Gestione: Se lo storico esiste, lo apri in append, altrimenti in write
+        # Gestione della modalità di scrittura (per risolvere ValueError)
         try:
             workbook = openpyxl.load_workbook(self.FILE_EXCEL)
             mode = 'a'
@@ -160,8 +153,18 @@ class RiskProfiler:
             workbook.remove(default_sheet)
             mode = 'w'
         
-        # Scrittura dello Storico e del Report
-        with pd.ExcelWriter(output, engine='openpyxl', mode=mode, if_sheet_exists='replace') as writer:
+        # CHIAVE DI SOLUZIONE: Crea un dizionario di argomenti condizionali
+        writer_args = {
+            'engine': 'openpyxl',
+            'mode': mode
+        }
+        
+        # Aggiungi 'if_sheet_exists' SOLO se siamo in modalità append ('a')
+        if mode == 'a':
+            writer_args['if_sheet_exists'] = 'replace'
+            
+        # Scrittura dello Storico e del Report (Usa **writer_args)
+        with pd.ExcelWriter(output, **writer_args) as writer:
             writer.book = workbook
             
             # A. Scrittura dello Storico aggiornato
@@ -216,12 +219,11 @@ profiler = RiskProfiler()
 st.set_page_config(page_title="🛡️ Risk Profiler MiFID", layout="wide")
 st.title("🛡️ Professional Risk Profiler (MiFID Structure)")
 
-# CHIAVE: Funzione di caching aggiornata (risolve l'errore allow_output_mutation)
+# Funzione di caching (risolve l'errore allow_output_mutation)
 @st.cache_data 
 def get_historical_df():
-    """Carica il DataFrame storico, usa try/except in caso di file non trovato."""
+    """Carica il DataFrame storico."""
     try:
-        # Assicura che il file sia cercato correttamente (Streamlit è in esecuzione nella stessa directory)
         if os.path.exists(profiler.FILE_EXCEL):
             return pd.read_excel(profiler.FILE_EXCEL, sheet_name='Storico Clienti')
         return pd.DataFrame()
@@ -277,7 +279,6 @@ if submitted:
     client_data, profilo_iniziale_calc = profiler._determine_profile(name, total_score, details)
     client_data.ProfiloDesiderato = desired_profile
     
-    # Logica di Giustificazione immediata per l'output
     if client_data.ProfiloRischio != desired_profile:
         st.session_state.show_justification = True
         st.session_state.client_data_temp = client_data
@@ -287,7 +288,6 @@ if submitted:
         st.session_state.show_justification = False
         st.session_state.profile_results = client_data
 
-# Se c'è un disallineamento, mostra il campo di giustificazione
 if 'show_justification' in st.session_state and st.session_state.show_justification:
     client_data_temp = st.session_state.client_data_temp
     
@@ -308,7 +308,6 @@ if st.session_state.profile_results and not st.session_state.get('show_justifica
     st.metric("Punteggio Totale", f"{client.PunteggioTotale} / {profiler.PUNTEGGIO_MAX}")
     st.info(f"Allocazione Suggerita: **{client.AllocazioneSuggerita}**")
     
-    # 1. Visualizzazione Grafico
     fig = profiler.create_plot(client)
     st.pyplot(fig)
     
@@ -322,8 +321,7 @@ if st.session_state.profile_results and not st.session_state.get('show_justifica
         "Giustificazione": client.Giustificazione
     })
     
-    # 2. Aggiornamento dello Storico e Generazione del Download
-    
+    # Aggiornamento dello Storico e Generazione del Download
     df_new = client.to_dataframe()
     df_full = pd.concat([st.session_state.historical_df, df_new], ignore_index=True)
     
@@ -334,5 +332,4 @@ if st.session_state.profile_results and not st.session_state.get('show_justifica
         data=excel_data,
         file_name=f"Report_Rischio_{client.NomeCliente.replace(' ', '_')}_{client.DataOra[:10]}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
     )
