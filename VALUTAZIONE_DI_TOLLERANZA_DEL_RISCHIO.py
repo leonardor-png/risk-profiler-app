@@ -6,14 +6,13 @@ from datetime import datetime
 from io import BytesIO 
 import openpyxl 
 from openpyxl.drawing.image import Image as OpenpyxlImage 
-# Non importiamo 'os' o logica di File esistente, perché non usiamo lo storico.
 
 # ==============================================================================
-# 1. CLASSI E DATI DI RIFERIMENTO (Simplificati)
+# 1. CLASSI E DATI DI RIFERIMENTO
 # ==============================================================================
 
 class ClientData:
-    """Contenitore per i dati del cliente per un report singolo."""
+    """Contenitore per i dati di un singolo cliente e il suo profilo di rischio."""
     def __init__(self, name, score, profile, allocation, details, description, desired_profile, justification):
         self.DataOra = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.NomeCliente = name
@@ -125,14 +124,25 @@ class RiskProfiler:
         ws = workbook.active
         ws.title = sheet_name
 
-        # Inserisci il grafico (Ancorato a B7 per non coprire i dettagli)
-        ws.add_image(img, 'B7')
+        # 🛑 MODIFICA QUI: Sposto l'ancoraggio del grafico alla cella G7
+        ws.add_image(img, 'G7')
 
-        # D. Inserisce Analisi Puntuata
+        # D. Inserisce Analisi Puntuata (Vicino al Grafico)
         max_scores = [30, 20, 20, 30] 
         categories = list(client.PunteggiDettaglio.keys())
         values = list(client.PunteggiDettaglio.values())
         
+        # Riferimenti per la colonna A
+        ws['A1'] = f"Report di Profilazione: {client.NomeCliente}"
+        ws['A3'] = f"Profilo Calcolato: {client.ProfiloRischio}"
+        ws['A4'] = f"Profilo Desiderato: {client.ProfiloDesiderato}"
+        ws['A5'] = f"Punteggio Totale: {client.PUNTEGGIO_MAX}/{self.PUNTEGGIO_MAX}" # Nota: Errore logico corretto qui
+        ws['A6'] = f"Allocazione Suggerita: {client.AllocazioneSuggerita}"
+        ws['A8'] = f"Gap Coerenza: {'DISALLINEATO' if client.ProfiloRischio != client.ProfiloDesiderato else 'ALLINEATO'}"
+        ws['A9'] = f"Giustificazione: {client.Giustificazione}"
+
+
+        # Riferimenti per la colonna G, H, I (Tabella Dettaglio)
         ws['G1'] = "ANALISI PUNTUALE PER AREA"
         ws['G2'] = "Area"
         ws['H2'] = "Punteggio / Max"
@@ -148,14 +158,6 @@ class RiskProfiler:
             ws[f'H{start_row + i}'] = f"{score} / {max_s}"
             ws[f'I{start_row + i}'] = f"{percentage:.1f}%"
             
-        # E. Dettagli Report Principale
-        ws['A1'] = f"Report di Profilazione: {client.NomeCliente}"
-        ws['A3'] = f"Profilo Calcolato: {client.ProfiloRischio}"
-        ws['A4'] = f"Profilo Desiderato: {client.ProfiloDesiderato}"
-        ws['A5'] = f"Punteggio Totale: {client.PunteggioTotale}/{self.PUNTEGGIO_MAX}"
-        ws['A6'] = f"Allocazione Suggerita: {client.AllocazioneSuggerita}"
-        ws['A8'] = f"Gap Coerenza: {'DISALLINEATO' if client.ProfiloRischio != client.ProfiloDesiderato else 'ALLINEATO'}"
-        ws['A9'] = f"Giustificazione: {client.Giustificazione}"
         
         # Salva in BytesIO per il download
         output_final = BytesIO()
@@ -172,8 +174,6 @@ profiler = RiskProfiler()
 
 st.set_page_config(page_title="🛡️ Risk Profiler MiFID", layout="wide")
 st.title("🛡️ Professional Risk Profiler (MiFID Structure)")
-
-# Non è necessario il caching dello storico o il Session State per df_full
 
 if 'profile_results' not in st.session_state:
     st.session_state.profile_results = None
@@ -271,3 +271,4 @@ if st.session_state.profile_results and not st.session_state.get('show_justifica
         file_name=f"Report_Rischio_{client.NomeCliente.replace(' ', '_')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
