@@ -104,7 +104,7 @@ class RiskProfiler:
         
         return fig 
 
-    # 🛑 FUNZIONE SEMPLIFICATA: Crea SOLO il report corrente per il download
+    # FUNZIONE SEMPLIFICATA: Crea SOLO il report corrente per il download
     def generate_excel_report_single(self, client):
         """Genera un report Excel in memoria (BytesIO) contenente SOLO il report grafico."""
         
@@ -125,8 +125,8 @@ class RiskProfiler:
         ws = workbook.active
         ws.title = sheet_name
 
-        # Inserisci il grafico
-        ws.add_image(img, 'B2')
+        # Inserisci il grafico (Ancorato a B7 per non coprire i dettagli)
+        ws.add_image(img, 'B7')
 
         # D. Inserisce Analisi Puntuata
         max_scores = [30, 20, 20, 30] 
@@ -262,7 +262,7 @@ if st.session_state.profile_results and not st.session_state.get('show_justifica
         "Giustificazione": client.Giustificazione
     })
     
-    # 🛑 CHIAMATA SEMPLIFICATA: Crea SOLO il report singolo
+    # CHIAMATA SEMPLIFICATA: Crea SOLO il report singolo
     excel_data = profiler.generate_excel_report_single(client)
     
     st.download_button(
