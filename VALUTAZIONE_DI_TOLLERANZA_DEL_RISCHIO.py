@@ -151,7 +151,6 @@ class RiskProfiler:
             # Crea un workbook standard
             workbook = openpyxl.Workbook()
             # 🛑 CORREZIONE FINALE: Rimuove il foglio di default 'Sheet' immediatamente.
-            # Questo garantisce che il workbook sia vuoto e il primo foglio scritto da Pandas sia attivo.
             default_sheet = workbook.active
             workbook.remove(default_sheet)
             mode = 'w'
@@ -205,9 +204,11 @@ class RiskProfiler:
         worksheet_report['A1'] = f"Report di Profilazione: {client.NomeCliente}"
         worksheet_report['A3'] = f"Profilo Calcolato: {client.ProfiloRischio}"
         worksheet_report['A4'] = f"Profilo Desiderato: {client.ProfiloDesiderato}"
-            # Nota: L'oggetto workbook è già stato caricato, qui uso l'indice per attivarlo
-            workbook.active = workbook.sheetnames.index('Storico Clienti')
-
+        worksheet_report['A5'] = f"Punteggio Totale: {client.PunteggioTotale}/{self.PUNTEGGIO_MAX}"
+        worksheet_report['A6'] = f"Allocazione Suggerita: {client.AllocazioneSuggerita}"
+        worksheet_report['A8'] = f"Gap Coerenza: {'DISALLINEATO' if client.ProfiloRischio != client.ProfiloDesiderato else 'ALLINEATO'}"
+        worksheet_report['A9'] = f"Giustificazione: {client.Giustificazione}"
+        
         # Imposta il foglio "Storico Clienti" come attivo/selezionato
         workbook.active = workbook.sheetnames.index('Storico Clienti')
         
