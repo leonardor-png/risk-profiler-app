@@ -148,8 +148,12 @@ class RiskProfiler:
             workbook = openpyxl.load_workbook(self.FILE_EXCEL)
             mode = 'a'
         except FileNotFoundError:
-            # Crea un workbook standard (che avrà un foglio "Sheet" predefinito)
+            # Crea un workbook standard
             workbook = openpyxl.Workbook()
+            # 🛑 CORREZIONE FINALE: Rimuove il foglio di default 'Sheet' immediatamente.
+            # Questo garantisce che il workbook sia vuoto e il primo foglio scritto da Pandas sia attivo.
+            default_sheet = workbook.active
+            workbook.remove(default_sheet)
             mode = 'w'
         
         # Setup Argomenti di scrittura
@@ -173,14 +177,6 @@ class RiskProfiler:
         # Carica il workbook appena scritto da Pandas
         workbook = openpyxl.load_workbook(output)
         
-        # 🛑 CORREZIONE DEFINITIVA DELL'INDEXERROR
-        # Rimuove il foglio di default di openpyxl ('Sheet') se esiste. 
-        # Questo garantisce che 'Storico Clienti' sia l'unico foglio "attivo"
-        # e visibile senza ambiguità.
-        if 'Sheet' in workbook.sheetnames:
-             std_sheet = workbook['Sheet']
-             workbook.remove(std_sheet)
-
         # C. Inserimento dei contenuti nel foglio report
         worksheet_report = workbook[sheet_name_report]
         worksheet_report.add_image(img, 'B2')
@@ -209,11 +205,9 @@ class RiskProfiler:
         worksheet_report['A1'] = f"Report di Profilazione: {client.NomeCliente}"
         worksheet_report['A3'] = f"Profilo Calcolato: {client.ProfiloRischio}"
         worksheet_report['A4'] = f"Profilo Desiderato: {client.ProfiloDesiderato}"
-        worksheet_report['A5'] = f"Punteggio Totale: {client.PunteggioTotale}/{self.PUNTEGGIO_MAX}"
-        worksheet_report['A6'] = f"Allocazione Suggerita: {client.AllocazioneSuggerita}"
-        worksheet_report['A8'] = f"Gap Coerenza: {'DISALLINEATO' if client.ProfiloRischio != client.ProfiloDesiderato else 'ALLINEATO'}"
-        worksheet_report['A9'] = f"Giustificazione: {client.Giustificazione}"
-        
+            # Nota: L'oggetto workbook è già stato caricato, qui uso l'indice per attivarlo
+            workbook.active = workbook.sheetnames.index('Storico Clienti')
+
         # Imposta il foglio "Storico Clienti" come attivo/selezionato
         workbook.active = workbook.sheetnames.index('Storico Clienti')
         
@@ -237,8 +231,6 @@ st.title("🛡️ Professional Risk Profiler (MiFID Structure)")
 def get_historical_df():
     """Carica il DataFrame storico."""
     try:
-        # Nota: In ambiente cloud, il file Storico_Report_Rischio.xlsx non esisterà
-        # dopo il primo deploy, quindi ritorna DataFrame vuoto (il comportamento corretto).
         if os.path.exists(profiler.FILE_EXCEL):
             return pd.read_excel(profiler.FILE_EXCEL, sheet_name='Storico Clienti')
         return pd.DataFrame()
