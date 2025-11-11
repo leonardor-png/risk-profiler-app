@@ -150,7 +150,8 @@ class RiskProfiler:
         except FileNotFoundError:
             # Crea un workbook standard
             workbook = openpyxl.Workbook()
-            # 🛑 CORREZIONE FINALE: Rimuove il foglio di default 'Sheet' immediatamente.
+            # 🛑 CORREZIONE 1: Rimuovi il foglio di default 'Sheet' immediatamente.
+            # Questo assicura che il primo foglio scritto da Pandas sia il foglio attivo/visibile.
             default_sheet = workbook.active
             workbook.remove(default_sheet)
             mode = 'w'
@@ -209,7 +210,7 @@ class RiskProfiler:
         worksheet_report['A8'] = f"Gap Coerenza: {'DISALLINEATO' if client.ProfiloRischio != client.ProfiloDesiderato else 'ALLINEATO'}"
         worksheet_report['A9'] = f"Giustificazione: {client.Giustificazione}"
         
-        # Imposta il foglio "Storico Clienti" come attivo/selezionato
+        # 🛑 CORREZIONE 2: Imposta il foglio "Storico Clienti" come attivo/selezionato
         workbook.active = workbook.sheetnames.index('Storico Clienti')
         
         # --- FASE 3: Salvataggio finale del Workbook corretto ---
