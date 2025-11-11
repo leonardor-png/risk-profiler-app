@@ -123,7 +123,7 @@ class RiskProfiler:
         return fig 
 
     def generate_excel_report(self, client, df_full):
-        """Genera il file Excel in memoria (BytesIO) per il download."""
+        """Salva i dati e il grafico nel file Excel, creando un nuovo foglio per il report."""
         
         timestamp_clean = client.DataOra.replace('-', '').replace(':', '').replace(' ', '').replace('.', '')
         unique_id = timestamp_clean[-10:] 
@@ -148,12 +148,11 @@ class RiskProfiler:
             workbook = openpyxl.load_workbook(self.FILE_EXCEL)
             mode = 'a'
         except FileNotFoundError:
-            # 🛑 CORREZIONE FINALE: Non rimuovere il foglio predefinito
+            # Crea un workbook vuoto. Lasciamo che Pandas gestisca i fogli.
             workbook = openpyxl.Workbook()
-            # La riga workbook.remove(workbook.active) che causava l'IndexError è stata rimossa.
             mode = 'w'
         
-        # CHIAVE DI SOLUZIONE: Crea un dizionario di argomenti condizionali
+        # Crea un dizionario di argomenti condizionali
         writer_args = {
             'engine': 'openpyxl',
             'mode': mode
@@ -167,7 +166,7 @@ class RiskProfiler:
         with pd.ExcelWriter(output, **writer_args) as writer:
             writer.book = workbook
             
-            # A. Scrittura dello Storico aggiornato (sovrascrive o crea)
+            # 🛑 CRITICO: Scrive lo Storico. Questo diventa il foglio 0.
             df_full.to_excel(writer, sheet_name='Storico Clienti', index=False)
             
             # B. Aggiunge il nuovo foglio report
@@ -206,6 +205,11 @@ class RiskProfiler:
             worksheet_report['A6'] = f"Allocazione Suggerita: {client.AllocazioneSuggerita}"
             worksheet_report['A8'] = f"Gap Coerenza: {'DISALLINEATO' if client.ProfiloRischio != client.ProfiloDesiderato else 'ALLINEATO'}"
             worksheet_report['A9'] = f"Giustificazione: {client.Giustificazione}"
+            
+            # 🛑 CORREZIONE FINALE: Forza il foglio "Storico Clienti" come attivo
+            # Questo risolve definitivamente l'IndexError di openpyxl.
+            writer.book.active = writer.book['Storico Clienti']
+
                 
         output.seek(0)
         return output
@@ -219,7 +223,6 @@ profiler = RiskProfiler()
 st.set_page_config(page_title="🛡️ Risk Profiler MiFID", layout="wide")
 st.title("🛡️ Professional Risk Profiler (MiFID Structure)")
 
-# Funzione di caching (risolve l'errore allow_output_mutation)
 @st.cache_data 
 def get_historical_df():
     """Carica il DataFrame storico."""
@@ -333,3 +336,4 @@ if st.session_state.profile_results and not st.session_state.get('show_justifica
         file_name=f"Report_Rischio_{client.NomeCliente.replace(' ', '_')}_{client.DataOra[:10]}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
