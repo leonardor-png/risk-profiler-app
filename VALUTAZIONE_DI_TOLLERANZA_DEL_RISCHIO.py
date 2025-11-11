@@ -334,4 +334,5 @@ if st.session_state.profile_results and not st.session_state.get('show_justifica
         data=excel_data,
         file_name=f"Report_Rischio_{client.NomeCliente.replace(' ', '_')}_{client.DataOra[:10]}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
     )
