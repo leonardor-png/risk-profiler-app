@@ -124,19 +124,22 @@ class RiskProfiler:
         ws = workbook.active
         ws.title = sheet_name
 
-        # 🛑 MODIFICA QUI: Sposto l'ancoraggio del grafico alla cella G7
+        # Inserisci il grafico (Ancorato a G7)
         ws.add_image(img, 'G7')
 
-        # D. Inserisce Analisi Puntuata (Vicino al Grafico)
+        # D. Inserisce Analisi Puntuata
         max_scores = [30, 20, 20, 30] 
         categories = list(client.PunteggiDettaglio.keys())
         values = list(client.PunteggiDettaglio.values())
         
-        # Riferimenti per la colonna A
+        # E. Dettagli Report Principale (Colonna A)
         ws['A1'] = f"Report di Profilazione: {client.NomeCliente}"
         ws['A3'] = f"Profilo Calcolato: {client.ProfiloRischio}"
         ws['A4'] = f"Profilo Desiderato: {client.ProfiloDesiderato}"
-        ws['A5'] = f"Punteggio Totale: {client.PUNTEGGIO_MAX}/{self.PUNTEGGIO_MAX}" # Nota: Errore logico corretto qui
+        
+        # 🛑 CORREZIONE APPLICATA: PunteggioTotale/PUNTEGGIO_MAX
+        ws['A5'] = f"Punteggio Totale: {client.PunteggioTotale}/{self.PUNTEGGIO_MAX}" 
+        
         ws['A6'] = f"Allocazione Suggerita: {client.AllocazioneSuggerita}"
         ws['A8'] = f"Gap Coerenza: {'DISALLINEATO' if client.ProfiloRischio != client.ProfiloDesiderato else 'ALLINEATO'}"
         ws['A9'] = f"Giustificazione: {client.Giustificazione}"
@@ -271,4 +274,3 @@ if st.session_state.profile_results and not st.session_state.get('show_justifica
         file_name=f"Report_Rischio_{client.NomeCliente.replace(' ', '_')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
